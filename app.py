@@ -18,25 +18,29 @@ def get_db_connection():
 # 🔷 GET all transactions
 @app.route('/api/transactions', methods=['GET'])
 def get_transactions():
-    conn = get_db_connection()
-    rows = conn.execute(
-        'SELECT * FROM transactions ORDER BY date DESC'
-    ).fetchall()
-    conn.close()
-    return jsonify([dict(row) for row in rows])
+    try:
+        conn = get_db_connection()
+        rows = conn.execute(
+            'SELECT * FROM transactions ORDER BY date DESC'
+        ).fetchall()
+        conn.close()
+        return jsonify([dict(row) for row in rows]), 200
+    except Exception as e:
+        print(f"❌ Error fetching transactions: {e}")
+        return jsonify({"error": "Failed to fetch transactions"}), 500
 
 
 # 🔷 POST a new transaction
 @app.route('/api/transaction', methods=['POST'])
 def add_transaction():
     try:
-        data = request.json
+        data = request.get_json()
         if not data:
             return jsonify({"error": "No JSON received"}), 400
 
         required = ['type', 'amount', 'category', 'date']
         if not all(k in data for k in required):
-            return jsonify({"error": "Missing fields"}), 400
+            return jsonify({"error": "Missing required fields"}), 400
 
         conn = get_db_connection()
         conn.execute(
@@ -46,7 +50,7 @@ def add_transaction():
             ''',
             (
                 data['type'],
-                data['amount'],
+                float(data['amount']),
                 data['category'],
                 data['date'],
                 data.get('note', '')
@@ -54,9 +58,10 @@ def add_transaction():
         )
         conn.commit()
         conn.close()
-        return jsonify({'status': 'success'})
+        return jsonify({'status': 'success'}), 201
+
     except Exception as e:
-        print("Error adding transaction:", str(e))
+        print(f"❌ Error adding transaction: {e}")
         return jsonify({"error": "Failed to add transaction"}), 500
 
 
@@ -65,19 +70,21 @@ def add_transaction():
 def delete_transaction(id):
     try:
         conn = get_db_connection()
-        conn.execute(
+        result = conn.execute(
             'DELETE FROM transactions WHERE id = ?',
             (id,)
         )
         conn.commit()
         conn.close()
-        return jsonify({'status': 'deleted'})
+        if result.rowcount == 0:
+            return jsonify({'error': 'Transaction not found'}), 404
+        return jsonify({'status': 'deleted'}), 200
+
     except Exception as e:
-        print("Error deleting transaction:", str(e))
-        return jsonify({"error": "Failed to delete"}), 500
+        print(f"❌ Error deleting transaction: {e}")
+        return jsonify({"error": "Failed to delete transaction"}), 500
 
 
-# 🔷 Initialize DB
 def init_db():
     conn = get_db_connection()
     conn.execute('''
@@ -92,9 +99,10 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+    print("✅ Database initialized.")
 
 
 if __name__ == '__main__':
-    print("✅ Initializing database and starting server...")
+    print("🚀 Starting backend...")
     init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
